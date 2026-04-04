@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 
 import { Buffer } from "node:buffer";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const DYNAMIC_PAGE_PREFIX = "https://t.bilibili.com/";
 const FEED_PATH = "/x/polymer/web-dynamic/v1/feed/all";
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const MACOS_SCROLL_SCRIPT = path.join(SCRIPT_DIR, "macos_scroll.swift");
 
 function parseArgs(argv) {
   let count = 200;
@@ -31,11 +36,27 @@ async function fetchJson(url) {
 
 async function findDynamicTarget() {
   const targets = await fetchJson("http://127.0.0.1:19825/json/list");
-  const page = targets.find((target) => target.type === "page" && String(target.url || "").startsWith(DYNAMIC_PAGE_PREFIX));
-  if (!page?.webSocketDebuggerUrl) {
-    throw new Error("bilibili dynamic page target not found");
+  return targets.find((target) => target.type === "page" && String(target.url || "").startsWith(DYNAMIC_PAGE_PREFIX)) || null;
+}
+
+function openDynamicPage() {
+  execFileSync("bb-browser", ["open", DYNAMIC_PAGE_PREFIX], { stdio: "ignore" });
+}
+
+async function ensureDynamicTarget(continueMode) {
+  let page = await findDynamicTarget();
+  if (page?.webSocketDebuggerUrl) return page;
+  if (continueMode) {
+    throw new Error("bilibili dynamic page target not found for --continue");
   }
-  return page;
+
+  openDynamicPage();
+  for (let i = 0; i < 20; i += 1) {
+    await sleep(500);
+    page = await findDynamicTarget();
+    if (page?.webSocketDebuggerUrl) return page;
+  }
+  throw new Error("bilibili dynamic page target not found after open");
 }
 
 class CdpClient {
@@ -111,9 +132,92 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function randomInt(min, max) {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function systemKeyPress(keyCode, delaySeconds = 0.08) {
+  execFileSync("/usr/bin/osascript", [
+    "-e",
+    'tell application "Google Chrome" to activate',
+    "-e",
+    'tell application "System Events"',
+    "-e",
+    'tell application process "Google Chrome"',
+    "-e",
+    `key code ${keyCode}`,
+    "-e",
+    `delay ${delaySeconds}`,
+    "-e",
+    "end tell",
+    "-e",
+    "end tell",
+  ], { stdio: "ignore" });
+}
+
+function systemMouseScroll(lines) {
+  execFileSync("/usr/bin/swift", [MACOS_SCROLL_SCRIPT, String(lines)], { stdio: "ignore" });
+}
+
+async function humanLikeScrollBurst() {
+  const pattern = randomInt(1, 4);
+
+  try {
+    if (pattern === 1) {
+      const ticks = randomInt(4, 6);
+      for (let i = 0; i < ticks; i += 1) {
+        systemMouseScroll(-randomInt(5, 10));
+        await sleep(randomInt(35, 95));
+      }
+      await sleep(randomInt(450, 950));
+      return;
+    }
+
+    if (pattern === 2) {
+      const ticks = randomInt(8, 12);
+      for (let i = 0; i < ticks; i += 1) {
+        systemMouseScroll(-randomInt(2, 5));
+        await sleep(randomInt(30, 90));
+      }
+      await sleep(randomInt(380, 820));
+      return;
+    }
+
+    if (pattern === 3) {
+      const ticks = randomInt(4, 5);
+      for (let i = 0; i < ticks; i += 1) {
+        systemMouseScroll(-randomInt(10, 18));
+        await sleep(randomInt(55, 130));
+      }
+      await sleep(randomInt(550, 1100));
+      return;
+    }
+
+    const firstTicks = randomInt(4, 7);
+    for (let i = 0; i < firstTicks; i += 1) {
+      systemMouseScroll(-randomInt(4, 7));
+      await sleep(randomInt(30, 90));
+    }
+    await sleep(randomInt(160, 420));
+    const secondTicks = randomInt(3, 5);
+    for (let i = 0; i < secondTicks; i += 1) {
+      systemMouseScroll(-randomInt(7, 12));
+      await sleep(randomInt(40, 110));
+    }
+    await sleep(randomInt(600, 1200));
+  } catch {
+    const fallbackPresses = randomInt(8, 12);
+    for (let i = 0; i < fallbackPresses; i += 1) {
+      systemKeyPress(125, 0.02);
+      await sleep(randomInt(25, 90));
+    }
+    await sleep(randomInt(500, 1000));
+  }
+}
+
 async function main() {
   const { count, continueMode } = parseArgs(process.argv.slice(2));
-  const target = await findDynamicTarget();
+  const target = await ensureDynamicTarget(continueMode);
   const cdp = new CdpClient(target.webSocketDebuggerUrl);
   await cdp.open();
 
@@ -175,11 +279,7 @@ async function main() {
   await cdp.send("Page.enable");
   await cdp.send("Network.enable");
   await cdp.send("Runtime.enable");
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseMoved",
-    x: 800,
-    y: 700,
-  });
+  await cdp.send("Page.bringToFront");
 
   if (!continueMode) {
     await cdp.send("Page.reload", { ignoreCache: false });
@@ -195,23 +295,10 @@ async function main() {
   for (let i = 0; i < maxRounds; i += 1) {
     if (rawSeen >= count) break;
 
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseWheel",
-      x: 800,
-      y: 700,
-      deltaX: 0,
-      deltaY: -1200,
-    });
-    await sleep(150);
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseWheel",
-      x: 800,
-      y: 700,
-      deltaX: 0,
-      deltaY: 4000,
-    });
-
-    await sleep(2200);
+    await humanLikeScrollBurst();
+    if (i > 0 && i % randomInt(5, 8) === 0) {
+      await sleep(randomInt(1400, 3200));
+    }
 
     if (rawSeen === lastRawSeen) {
       stagnantRounds += 1;
@@ -219,7 +306,7 @@ async function main() {
       stagnantRounds = 0;
       lastRawSeen = rawSeen;
     }
-    if (stagnantRounds >= 6) break;
+    if (stagnantRounds >= 20) break;
   }
 
   await sleep(1000);

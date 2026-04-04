@@ -43,6 +43,7 @@ Implementation notes:
 - `bilibili_follow_csv.sh` is the stable entrypoint.
 - It delegates to `skills/bilibili/scripts/bilibili_follow_cdp.mjs`.
 - The collector connects directly to Chrome DevTools Protocol.
+- It uses CDP for observation and tab control, but prefers macOS system-level mouse-wheel scrolling instead of CDP wheel events.
 - It listens to `Network.responseReceived` and `Network.loadingFinished`.
 - It filters `x/polymer/web-dynamic/v1/feed/all` responses and reads bodies through `Network.getResponseBody`.
 - It does not parse DOM cards.
@@ -64,7 +65,10 @@ Follow feed semantics:
 - The numeric argument is the target number of raw dynamic items to observe, not the final CSV row count.
 - Non-video dynamics are filtered out before CSV output.
 - The script writes `raw_seen`, `filtered_non_video`, and `video_count` to stderr.
+- Without `--continue`, the script auto-opens `https://t.bilibili.com/` if no matching dynamic tab exists.
 - `--continue` means: stay on the existing `https://t.bilibili.com/` tab, do not refresh, and only capture newly triggered feed responses while continuing to scroll downward.
+- Scrolling is intentionally humanized with mixed mouse-wheel bursts and non-fixed pauses; keyboard fallback is only a backup path.
+- Avoid rewriting it back to fixed CDP wheel loops on China mainland platforms unless there is a strong reason.
 
 ## Token Guardrails
 
