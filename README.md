@@ -1,6 +1,6 @@
-# Personal Skills
+# My MacBook Skills
 
-This repository stores personal Codex skills and helper scripts.
+This repository stores my personal Codex skills and helper scripts for day-to-day use on my own MacBook.
 
 Current skills:
 
