@@ -1,11 +1,11 @@
 ---
 name: bilibili
-description: Use `bb-browser` to browse Bilibili feeds and open Bilibili video pages through a real Chrome session.
+description: Use `bb-browser` plus Chrome DevTools Protocol to read the Bilibili follow feed and open Bilibili video pages through a real Chrome session.
 ---
 
 # Bilibili
 
-Use `bb-browser` for Bilibili tasks. Prefer helper scripts over repeated DOM inspection when the task is a feed read or opening a known video.
+Use `bb-browser` for Bilibili tasks. Prefer the helper scripts over repeated DOM inspection when the task is reading the follow feed or opening a known video.
 
 ## Quick Start
 
@@ -14,10 +14,10 @@ Run:
 ```bash
 bb-browser --version
 bb-browser status
-bb-browser site info bilibili/feed
+bb-browser tab list
 ```
 
-If login is required, make sure you log in inside the exact Chrome instance controlled by `bb-browser`.
+If login is required, log in inside the exact Chrome instance controlled by `bb-browser`.
 
 ## Open Video Page
 
@@ -27,45 +27,48 @@ Open or focus a Bilibili video page:
 bash skills/bilibili/scripts/bilibili_play.sh <video_url_or_bv>
 ```
 
-The script does two things:
+The script reuses an existing matching video tab when possible, otherwise opens the target video URL and brings that Chrome tab to the front.
 
-1. Reuse an existing target video tab when available; otherwise open the target video URL.
-2. Bring the matching Chrome tab to the front.
+## Follow Feed Script
 
-## Feed Scripts
-
-Use helper scripts for feed reads:
-
-- Homepage / recommended feed: `skills/bilibili/scripts/bilibili_home_csv.sh`
-- Following timeline / `t.bilibili.com`: `skills/bilibili/scripts/bilibili_follow_csv.sh`
-
-Commands:
+Use the helper script for `https://t.bilibili.com/`:
 
 ```bash
-bash skills/bilibili/scripts/bilibili_home_csv.sh 50
 bash skills/bilibili/scripts/bilibili_follow_csv.sh 50
+bash skills/bilibili/scripts/bilibili_follow_csv.sh 20 --continue
 ```
+
+Implementation notes:
+
+- `bilibili_follow_csv.sh` is the stable entrypoint.
+- It delegates to `skills/bilibili/scripts/bilibili_follow_cdp.mjs`.
+- The collector connects directly to Chrome DevTools Protocol.
+- It listens to `Network.responseReceived` and `Network.loadingFinished`.
+- It filters `x/polymer/web-dynamic/v1/feed/all` responses and reads bodies through `Network.getResponseBody`.
+- It does not parse DOM cards.
 
 Returned columns:
 
-- `bilibili_home_csv.sh`: `title,url,author,play,danmaku,duration,pub_date`
-- `bilibili_follow_csv.sh`: `title,url,author,view,like,share,pub_date`
+- `title,url,author,like,pub_date`
 
 Column meaning:
 
-- `title`: card title or main content title
-- `url`: canonical video / opus / live / article URL when available
-- `author`: uploader or dynamic author
-- `play` / `view`: main visible count
-- `danmaku`: danmaku count on homepage video cards
-- `duration`: video duration on homepage video cards
-- `like`: like count when visible in follow feed
-- `share`: repost/share count when visible in follow feed
-- `pub_date`: visible relative or absolute time text
+- `title`: video title
+- `url`: canonical video URL
+- `author`: uploader name from dynamic feed responses
+- `like`: like count from dynamic feed responses
+- `pub_date`: publish time text from dynamic feed responses
+
+Follow feed semantics:
+
+- The numeric argument is the target number of raw dynamic items to observe, not the final CSV row count.
+- Non-video dynamics are filtered out before CSV output.
+- The script writes `raw_seen`, `filtered_non_video`, and `video_count` to stderr.
+- `--continue` means: stay on the existing `https://t.bilibili.com/` tab, do not refresh, and only capture newly triggered feed responses while continuing to scroll downward.
 
 ## Token Guardrails
 
-- If the user asks to browse the Bilibili homepage or follow feed, use the helper script first.
+- If the user asks to browse the Bilibili follow feed, use the helper script first.
 - Do not start with `snapshot -i` unless the user explicitly needs structure or a click target.
 - Do not paste large raw JSON when CSV is enough.
 - Prefer returning CSV rows or a compact subset of rows.
