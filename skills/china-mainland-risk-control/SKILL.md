@@ -21,13 +21,15 @@ Use this skill if any of the following is true:
 
 For China mainland platforms, bias toward the least observable approach that still solves the task.
 
+When automation is necessary, prefer the method that is closest to normal human operation and least likely to expose abnormal runtime artifacts.
+
 Priority order:
 
 1. Manual browsing or built-in site export
-2. Read-only browser inspection without page mutation
-3. Pure CDP observation without changing page JS
-4. Controlled human-in-the-loop interaction
-5. Page injection, monkey-patching, DOM rewriting, or synthetic high-frequency automation only if explicitly accepted as risky
+2. CDP-assisted or system-level simulated operation that stays close to real user behavior, with no page runtime mutation when possible
+3. Read-only browser inspection or pure CDP observation without changing page JS
+4. Page injection, monkey-patching, DOM rewriting, or other in-page code execution only when lower-risk interaction is insufficient
+5. Direct request replay, simulated API calls, or other request-level automation only when all safer paths are insufficient and the user explicitly accepts the risk
 
 If a higher-risk approach is chosen, say so plainly before doing it.
 
@@ -36,6 +38,7 @@ If a higher-risk approach is chosen, say so plainly before doing it.
 These patterns are especially likely to trigger detection on China mainland platforms:
 
 - repeatedly opening the same site, route, chat, or agent page in a short period
+- skipping normal user interaction paths and jumping straight to request replay or direct API invocation
 - replacing or monkey-patching `fetch`, `XMLHttpRequest`, `WebSocket`, `Promise`, or other global primitives
 - injecting long-lived hooks into the page runtime
 - direct DOM rewriting of editors, forms, or app state
@@ -57,11 +60,15 @@ These patterns are especially likely to trigger detection on China mainland plat
 When working with `bb-browser` on China mainland platforms:
 
 - prefer snapshots, visible-state inspection, and manual confirmation over automated submission
-- prefer pure CDP network observation over page-level JS injection
+- prefer CDP-assisted or operating-system-level simulated browsing actions that resemble normal user behavior
+- prefer staying on the normal page flow and interacting through visible controls instead of jumping directly to hidden APIs or request replay
+- prefer pure CDP network observation over page-level JS injection when observation is enough
 - prefer one stable browser profile and environment; avoid unnecessary shifts in IP, device characteristics, timezone, locale, font set, or hardware-exposed browser traits
 - prefer operating-system-level keyboard and pointer events over CDP-dispatched input events
 - if keyboard interaction is sufficient, use system keyboard events instead of CDP `Input.dispatchKeyEvent` or similar browser-level synthetic input
 - use CDP-dispatched click or pointer events only when precise element targeting is required and a system-level event would be too unreliable
+- treat injected scripts as a fallback, not a default technique
+- treat direct request simulation or replay as the last resort because it usually deviates most from normal user behavior and can create the clearest risk signature
 - avoid repeatedly reopening the same page or rebuilding the same session state during experiments
 - avoid perfectly regular delays; if human-in-the-loop interaction is expected, leave room for real reading and dwell time
 - avoid starting with submission, scraping, or capture before establishing normal user-context behavior when that context normally exists
@@ -79,6 +86,7 @@ Before using a risky method, state:
 - why the safer method is insufficient
 - which exact detection signals the new method introduces
 - whether the method touches page runtime, input behavior, or login state
+- why CDP/system-style simulated interaction is not sufficient before moving to injection or request replay
 
 Keep this explicit. Do not bury the risk in a long explanation.
 
